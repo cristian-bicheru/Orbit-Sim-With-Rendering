@@ -3,6 +3,7 @@ import time
 import random
 import math
 from decimal import *
+import multiprocessing
 
 #Made by Crisian Bicheru 2018
 #Uses Newtonian Physics
@@ -11,21 +12,21 @@ from decimal import *
 #Object Orbits Are Rendered And Played Back Once Objects Complete Their Full Orbit
 ###################################################################################
 
-WIDTH = 1300             #resolution, 
+WIDTH = 1300              #resolution, 
 HEIGHT = 1000
 
-dT = 0.0001              #delay between frames, <0.0005 is optimal since this is a render.
-                         #changing this in-sim results in interesting behaviour when dT is high
-blackHoleMass = 10000000 #default mass of black hole
-gravConstant = 1         #default gravitational constant
-ox = 0                   #default spawn offset x
-oy = 0                   #default spawn offset y
-spawnSpeedX = 0          #default spawn speed (x direction)
-spawnSpeedY = 0          #default spawn speed (y direction)
-playbackRate = 1         #default playback rate (must be an int currently {otherwise you have to approximate})
-triggerDistance = 1      #you can set this lower if you also set dT lower (you have to raise it if you raise dT), if you set this too low the code may not detect an elapsed orbit
-decimalPrecision = 100   #number of significant figures used in calculations
-
+dT = 0.0003               #delay between frames, <0.0005 is optimal since this is a render.
+                          #changing this in-sim results in interesting behaviour when dT is high
+blackHoleMass = 10000000  #default mass of black hole
+gravConstant = 1          #default gravitational constant
+ox = 0                    #default spawn offset x
+oy = 0                    #default spawn offset y
+spawnSpeedX = 0           #default spawn speed (x direction)
+spawnSpeedY = 0           #default spawn speed (y direction)
+playbackRate = 1          #default playback rate (must be an int currently {otherwise you have to approximate})
+triggerDistance = 1       #you can set this lower if you also set dT lower (you have to raise it if you raise dT), if you set this too low the code may not detect an elapsed orbit
+decimalPrecision = 100    #number of significant figures used in calculations
+enableMultiprocessing = 1 #self-explanatory, 1=on, 0=off
 
 
 unrenderedSpheres = 0
@@ -35,20 +36,16 @@ timeToggle = 0
 frozen = []
 getcontext().prec = decimalPrecision
 
-tk = Tk()
-back = Canvas(tk, width=WIDTH+255, height=HEIGHT+20)
-back.pack()
-simFrame = Frame(tk)
-canvas = Canvas(simFrame, width=WIDTH, height=HEIGHT, bg="grey")
-tk.title("orbital motion")
-simFrame.place(x=245, y=10)
-canvas.pack()
 
 def asin(x):
     global decimalPrecision
     p = 0
     for n in range(decimalPrecision):
-        p += Decimal(1)/Decimal(2**(2*n))*Decimal(math.factorial(2*n))/(Decimal(math.factorial(n))**Decimal(2))*Decimal(x**(2*n+1))/Decimal(2*n+1)
+        try:
+            p += Decimal(1)/Decimal(2**(2*n))*Decimal(math.factorial(2*n))/(Decimal(math.factorial(n))**Decimal(2))*Decimal(x**(2*n+1))/Decimal(2*n+1)
+        except:
+            break
+        
     return p
 
 
@@ -56,7 +53,10 @@ def cos(x):
     global decimalPrecision
     p = 0
     for n in range(decimalPrecision):
-        p += Decimal(((-1)**n)*(x**(2*n)))/(Decimal(math.factorial(2*n)))
+        try:
+            p += Decimal(((-1)**n)*(x**(2*n)))/(Decimal(math.factorial(2*n)))
+        except:
+            break
     return p
 
 class Ball:
@@ -300,14 +300,48 @@ class menu:
             self.button7.config(state="normal")
             self.button.config(state="normal")
 
+def update(objecT):
+    objecT.update()
 
-planets = []
-others = []
-others.append(blackHole())
-others.append(menu())
-blackHole().update()
-while True:
-    for objecT in planets:
-        objecT.update()
-    tk.update()
-    time.sleep(dT)
+if __name__ == "__main__":
+    
+    tk = Tk()
+    back = Canvas(tk, width=WIDTH+255, height=HEIGHT+20)
+    back.pack()
+    simFrame = Frame(tk)
+    canvas = Canvas(simFrame, width=WIDTH, height=HEIGHT, bg="grey")
+    tk.title("orbital motion")
+    simFrame.place(x=245, y=10)
+    canvas.pack()
+    planets = []
+    others = []
+    others.append(blackHole())
+    others.append(menu())
+    blackHole().update()
+
+    if enableMultiprocessing == 0:
+        while True:
+            for objecT in planets:
+                objecT.update()
+            tk.update()
+            if unrenderedSpheres == 0:
+                time.sleep(dT)
+
+    elif enableMultiprocessing == 1:
+        while True:
+            n = len(planets)
+            if n == 1 or unrenderedSpheres == 0:
+                for objecT in planets:
+                    objecT.update()
+                tk.update()
+                if unrenderedSpheres == 0:
+                    time.sleep(dT)
+            elif n < multiprocessing.cpu_count():
+                q = multiprocessing.Pool(processes = len(planets))
+                async_result = q.map_async(update, planets)
+                q.close()
+                q.join()
+                tk.update()
+                print("done")
+    else:
+        print("ERROR: check mp setting.")
